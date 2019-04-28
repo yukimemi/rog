@@ -1,0 +1,24 @@
+debug = true
+
+[[rogs]]
+name = "system_evtx"
+extension = "csv"
+path = "csv$"
+capture = "(?P<time>), (?P<level>) (?P<msg>)"
+
+[[rogs]]
+name = "app_evtx"
+extension = "csv"
+path = "csv$"
+capture = "(?P<time>), (?P<level>) (?P<msg>)"
+
+[[rogs]]
+name = "app"
+extension = "log"
+path = "SSO"
+capture = "(?P<level>).*(?P<time>)-(?P<level>) (?P<msg>)"
+
+[out]
+path = "./merge"
+format = "csv"
+fields = ["time","level","msg"]
