@@ -2,20 +2,17 @@ debug = true
 
 [[rogs]]
 name = "system_evtx"
-extension = "csv"
-path = "csv$"
-capture = "(?P<time>), (?P<level>) (?P<msg>)"
+match = "System.*csv$"
+capture = {"time" = 0, "level" = 1, "msg" = 2}
 
 [[rogs]]
 name = "app_evtx"
-extension = "csv"
-path = "csv$"
-capture = "(?P<time>), (?P<level>) (?P<msg>)"
+match = "Application.*csv$"
+capture = {"time" = 0, "level" = 1, "msg" = 2}
 
 [[rogs]]
 name = "app"
-extension = "log"
-path = "SSO"
+match = "app.*log$"
 capture = "(?P<level>).*(?P<time>)-(?P<level>) (?P<msg>)"
 
 [out]
