@@ -44,7 +44,7 @@ fn main() -> Result<()> {
     // Read config.
     let settings = Settings::new(cfg)?;
 
-    debug!("{:#?}", &settings);
+    // debug!("{:#?}", &settings);
 
     // Get logs.
     let input = matches.value_of("PATH").unwrap();
@@ -86,7 +86,6 @@ impl Rog {
         let mut lines: Vec<Line> = Vec::new();
         rdr.records().for_each(|r| match r {
             Ok(r) => {
-                // debug!("{:#?}", r);
                 let mut line = HashMap::new();
                 cap.iter().for_each(|(k, v)| {
                     match r.get(*v) {
@@ -100,8 +99,6 @@ impl Rog {
             }
             Err(e) => eprintln!("{}", e),
         });
-
-        // debug!("{:#?}", lines);
 
         Ok(Rog {
             lines: lines,
@@ -159,7 +156,7 @@ mod tests {
     #[test]
     fn test_get_entries() {
         let rogs = get_test_rogs().iter().map(|e| e).collect::<Vec<_>>();
-        debug!("{:#?}", rogs);
+        // debug!("{:#?}", rogs);
         assert_eq!(rogs.len(), 3);
     }
 
@@ -171,8 +168,34 @@ mod tests {
             .iter()
             .filter_map(|de| get_rog(de.path(), &settings))
             .collect::<Vec<_>>();
-        debug!("{:#?}", rogs);
+        // debug!("{:#?}", rogs);
         assert_eq!(rogs.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_with_csv() {
+        let settings = Settings::new("rog.toml").unwrap();
+        let rogs = get_test_rogs().iter().map(|e| e).collect::<Vec<_>>();
+        let rogs = rogs
+            .iter()
+            .filter_map(|de| get_rog(de.path(), &settings))
+            .filter_map(|rog| {
+                if let Capture::Csv(cap) = &rog.capture {
+                    let rog = rog.parse_with_csv(cap.clone());
+                    return Some(rog);
+                }
+                None
+            })
+            .collect::<Vec<_>>();
+        // debug!("{:#?}", rogs);
+        rogs.iter().for_each(|rog| match rog {
+            Ok(rog) => match rog.name.as_str() {
+                "system_evtx" => assert_eq!(rog.lines.len(), 5),
+                "app_evtx" => assert_eq!(rog.lines.len(), 5),
+                _ => panic!("error"),
+            },
+            Err(e) => panic!("error {:#?}", e),
+        })
     }
 
 }
