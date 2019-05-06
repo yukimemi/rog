@@ -74,12 +74,12 @@ impl Rog {
 
     fn parse_lines(&self) -> Result<Self> {
         match &self.capture {
-            Capture::Text(cap) => self.parse_with_text(cap.clone()),
-            Capture::Csv(cap) => self.parse_with_csv(cap.clone()),
+            Capture::Text(_) => self.parse_with_text(),
+            Capture::Csv(_) => self.parse_with_csv(),
         }
     }
 
-    fn parse_with_csv(&self, cap: HashMap<String, usize>) -> Result<Self> {
+    fn parse_with_csv(&self) -> Result<Self> {
         // Open rog.
         let f = fs::File::open(&self.path)?;
         let mut rdr = csv::Reader::from_reader(f);
@@ -87,15 +87,17 @@ impl Rog {
         rdr.records().for_each(|r| match r {
             Ok(r) => {
                 let mut line = HashMap::new();
-                cap.iter().for_each(|(k, v)| {
-                    match r.get(*v) {
-                        Some(col) => {
-                            line.insert(k.to_string(), col.to_string());
-                        }
-                        None => eprintln!("{:#?} has not {} column !", r, v),
-                    };
-                });
-                lines.push(line);
+                if let Capture::Csv(cap) = &self.capture {
+                    cap.iter().for_each(|(k, v)| {
+                        match r.get(*v) {
+                            Some(col) => {
+                                line.insert(k.to_string(), col.to_string());
+                            }
+                            None => eprintln!("{:#?} has not {} column !", r, v),
+                        };
+                    });
+                    lines.push(line);
+                }
             }
             Err(e) => eprintln!("{}", e),
         });
@@ -105,7 +107,7 @@ impl Rog {
             ..self.clone()
         })
     }
-    fn parse_with_text(&self, cap: String) -> Result<Self> {
+    fn parse_with_text(&self) -> Result<Self> {
         Ok(Rog { ..self.clone() })
     }
 }
@@ -180,8 +182,8 @@ mod tests {
             .iter()
             .filter_map(|de| get_rog(de.path(), &settings))
             .filter_map(|rog| {
-                if let Capture::Csv(cap) = &rog.capture {
-                    let rog = rog.parse_with_csv(cap.clone());
+                if let Capture::Csv(_) = &rog.capture {
+                    let rog = rog.parse_with_csv();
                     return Some(rog);
                 }
                 None
