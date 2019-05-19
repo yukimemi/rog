@@ -4,18 +4,21 @@ debug = true
 name = "system_evtx"
 match = "System.*csv$"
 capture = {"time" = 0, "level" = 1, "msg" = 2}
+parse = "%Y/%m/%d %H:%M"
 
 [[rogs]]
 name = "app_evtx"
 match = "Application.*csv$"
 capture = {"time" = 0, "level" = 1, "msg" = 2}
+parse = "%Y/%m/%d %H:%M:%S"
 
 [[rogs]]
 name = "app"
 match = "app.*log$"
-capture = "(?P<level>).*(?P<time>)-(?P<level>) (?P<msg>)"
+capture = '(?P<time>[0-9/]+-[0-9:.]+) (?P<level>[^ ]+) (?P<msg>.*)'
+parse = "%Y/%m/%d-%H:%M:%S.%3f"
 
 [out]
-path = "./merge"
+path = "./dst/merge.csv"
 format = "csv"
-fields = ["time","level","msg"]
+fields = ["time","name", "level","msg"]

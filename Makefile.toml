@@ -28,7 +28,7 @@ script = ["RUST_LOG=rog=debug cargo run -- ${@}"]
 
 [tasks.watch]
 env = { "RUST_LOG" = "rog=debug" }
-watch = true
+watch = { postpone = true, ignore_pattern = "dst/*" }
 dependencies = [
   "build",
   "test",

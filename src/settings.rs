@@ -15,6 +15,7 @@ pub struct Rog {
     #[serde(rename = "match")]
     pub match_: String,
     pub capture: Capture,
+    pub parse: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
