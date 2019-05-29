@@ -19,6 +19,10 @@ command = "cargo"
 args = ["build"]
 dependencies = ["clean"]
 
+[tasks.install]
+command = "cargo"
+args = ["install", "--force", "--path", "."]
+
 [tasks.test]
 command = "cargo"
 args = ["test"]
