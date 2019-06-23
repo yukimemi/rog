@@ -5,6 +5,7 @@ skip_core_tasks = true
 install_crate = "rustfmt"
 command = "cargo"
 args = ["fmt"]
+description = "Format code using rustfmt"
 
 [tasks.clean]
 command = "cargo"
@@ -23,9 +24,14 @@ dependencies = ["clean"]
 command = "cargo"
 args = ["install", "--force", "--path", "."]
 
+[tasks.lint]
+command = "cargo"
+args = ["clippy"]
+
 [tasks.test]
 command = "cargo"
-args = ["test"]
+args = ["test", "--", "--nocapture"]
+dependencies = ["format", "lint"]
 
 [tasks.debug]
 script = ["RUST_LOG=rog=debug cargo run -- ${@}"]

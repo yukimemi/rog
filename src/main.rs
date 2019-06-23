@@ -5,24 +5,34 @@ use clap::{
 };
 use csv;
 use failure::Error;
-use itertools::Itertools;
-use log::*;
 use pretty_env_logger;
 use regex::Regex;
 use settings::{Capture, Settings};
 use std::collections::HashMap;
+use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
+use tempfile::tempdir;
 use walkdir::{DirEntry, WalkDir};
+#[macro_use]
+extern crate bindata;
+#[macro_use]
+extern crate bindata_impl;
+#[macro_use]
+extern crate rust_embed;
 
 mod settings;
 
 type Result<T> = std::result::Result<T, Error>;
 type Msg = HashMap<String, String>;
+
+#[derive(RustEmbed)]
+#[folder = "tool"]
+struct Asset;
 
 #[derive(Debug, Clone)]
 struct Lines(Vec<Line>);
@@ -40,6 +50,10 @@ struct Rog {
     parse: String,
     lines: Vec<Line>,
 }
+
+// mod assets {
+// bindata!("tool");
+// }
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -94,6 +108,39 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
+    // let mut gonkf = env::current_dir()?;
+    // gonkf.push("gonkf");
+
+    #[cfg(target_os = "windows")]
+    // let gonkf_data = assets::get("tool/gonkf.exe").ok_or("gonkf not found !".to_string())?;
+    let gonkf_data = Asset::get("gonkf.exe").unwrap();
+
+    #[cfg(not(target_os = "windows"))]
+    // let gonkf_data = assets::get("tool/gonkf").ok_or("gonkf not found !".to_string())?;
+    let gonkf_data = Asset::get("gonkf").unwrap();
+
+    let tmp_dir = tempdir()?;
+    let gonkf = tmp_dir.path().join("gonkf");
+    let mut f = fs::File::create(&gonkf)?;
+    f.write_all(&gonkf_data)?;
+    f.flush()?;
+
+    // Set executable permissions.
+    // let mut perms = fs::metadata(&gonkf)?.permissions();
+    // perms.set_readonly
+    // fs::set_permissions("foo.txt", perms)?;
+    let out = Command::new(gonkf)
+        .arg("conv")
+        .arg(input.as_ref().to_path_buf())
+        .arg("-o")
+        .arg(output.as_ref().to_path_buf())
+        .output()
+        .expect("failed to execute process");
+    dbg!(&out);
+    Ok(())
+}
+
 fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
     // Open csv file.
     // TODO: use stdout !
@@ -138,10 +185,10 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
 impl Rog {
     fn new<P: AsRef<Path>>(name: String, path: P, capture: &Capture, parse: String) -> Rog {
         Rog {
-            name: name,
+            name,
             path: Path::new(path.as_ref()).to_path_buf(),
             capture: capture.clone(),
-            parse: parse,
+            parse,
             lines: vec![],
         }
     }
@@ -156,8 +203,12 @@ impl Rog {
     }
 
     fn parse_with_csv(&self) -> Result<Self> {
+        // Before open, translate to utf8.
+        let tmp_dir = tempdir()?;
+        let tmp_file = tmp_dir.path().join("rog");
+        to_utf8(&self.path, &tmp_file)?;
         // Open rog.
-        let f = fs::File::open(&self.path)?;
+        let f = fs::File::open(tmp_file)?;
         let mut rdr = csv::Reader::from_reader(f);
         let mut lines: Vec<Line> = Vec::new();
         if let Capture::Csv(cap) = &self.capture {
@@ -188,13 +239,17 @@ impl Rog {
         }
 
         Ok(Rog {
-            lines: lines,
+            lines,
             ..self.clone()
         })
     }
     fn parse_with_text(&self) -> Result<Self> {
+        // Before open, translate to utf8.
+        let tmp_dir = tempdir()?;
+        let tmp_file = tmp_dir.path().join("rog");
+        to_utf8(&self.path, &tmp_file)?;
         // Open rog.
-        let f = fs::File::open(&self.path)?;
+        let f = fs::File::open(tmp_file)?;
         let rdr = BufReader::new(f).lines();
         let mut lines: Vec<Line> = Vec::new();
         // rdr.for_each(|line| debug!("{:#?}", line));
@@ -234,7 +289,7 @@ impl Rog {
         // debug!("{:#?}", lines);
 
         Ok(Rog {
-            lines: lines,
+            lines,
             ..self.clone()
         })
     }
@@ -287,10 +342,9 @@ mod tests {
         get_entries(cwd)
     }
 
-    #[test]
-    fn test_main() {
-        assert_eq!(main().unwrap(), ());
-    }
+    // #[test]
+    // fn test_main() {
+    // assert_eq!(main().unwrap(), ());    // }
 
     #[test]
     fn test_get_entries() {
@@ -329,8 +383,8 @@ mod tests {
         // debug!("{:#?}", rogs);
         rogs.iter().for_each(|rog| match rog {
             Ok(rog) => match rog.name.as_str() {
-                "system_evtx" => assert_eq!(rog.lines.len(), 5),
-                "app_evtx" => assert_eq!(rog.lines.len(), 6),
+                "system_evtx" => assert_eq!(rog.lines.len(), 6),
+                "app_evtx" => assert_eq!(rog.lines.len(), 7),
                 _ => panic!("error"),
             },
             Err(e) => panic!("error {:#?}", e),
@@ -377,8 +431,8 @@ mod tests {
         // Sort rogs.
         let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
         lines.sort_by_key(|l| l.time);
-        // debug!("{:#?}", lines);
+        dbg!(&lines);
 
-        assert_eq!(lines.len(), 24);
+        assert_eq!(lines.len(), 26);
     }
 }
