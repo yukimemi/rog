@@ -48,7 +48,7 @@ impl Settings {
         s.merge(Environment::with_prefix("app"))?;
 
         // Now that we're done, let's access our configuration
-        println!("debug: {:#?}", s.get_bool("debug"));
+        // println!("debug: {:#?}", s.get_bool("debug"));
 
         // You can deserialize (and thus freeze) the entire configuration as
         s.try_into()

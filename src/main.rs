@@ -5,7 +5,7 @@ use clap::{
 };
 use csv;
 use failure::Error;
-use pretty_env_logger;
+use log::*;
 use regex::Regex;
 use settings::{Capture, Settings};
 use std::collections::HashMap;
@@ -127,17 +127,19 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     f.flush()?;
 
     // Set executable permissions.
-    // let mut perms = fs::metadata(&gonkf)?.permissions();
-    // perms.set_readonly
-    // fs::set_permissions("foo.txt", perms)?;
-    let out = Command::new(gonkf)
+    #[cfg(not(target_os = "windows"))]
+    {
+        debug!("chmod +x {}", &gonkf.to_str().unwrap());
+        Command::new("chmod").arg("+x").arg(&gonkf).output()?;
+    }
+
+    let out = Command::new(&gonkf)
         .arg("conv")
         .arg(input.as_ref().to_path_buf())
         .arg("-o")
         .arg(output.as_ref().to_path_buf())
-        .output()
-        .expect("failed to execute process");
-    dbg!(&out);
+        .output()?;
+    // dbg!(&out);
     Ok(())
 }
 
@@ -159,6 +161,7 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
     // if let Err(e) = wtr.write_record(&out.fields.expect("fields of out setting is needed now !")) {
     // eprintln!("write_record error: {:#?}", e);
     // }
+    let len = lines.len();
     lines.into_iter().for_each(|line| {
         // Make output records.
         let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S.%3f").to_string()];
@@ -174,11 +177,13 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
         if let Err(e) = wtr.write_record(&v) {
             eprintln!("write_record error: {:#?}", e);
         }
-        if let Err(e) = wtr.flush() {
-            eprintln!("flush error: {:#?}", e);
-        }
     });
-
+    wtr.flush()?;
+    info!(
+        "Write to csv [{}] ({} records)",
+        &out_path.to_str().unwrap(),
+        len
+    );
     Ok(())
 }
 
@@ -194,6 +199,7 @@ impl Rog {
     }
 
     fn parse_lines(&self) -> Result<Self> {
+        info!("Open rog [{}]", &self.path.to_str().unwrap());
         let mut rog = match &self.capture {
             Capture::Text(_) => self.parse_with_text()?,
             Capture::Csv(_) => self.parse_with_csv()?,
