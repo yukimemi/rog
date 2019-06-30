@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
-use tempfile::tempdir;
+use tempfile::NamedTempFile;
 use walkdir::{DirEntry, WalkDir};
 #[macro_use]
 extern crate bindata;
@@ -30,8 +30,19 @@ mod settings;
 type Result<T> = std::result::Result<T, Error>;
 type Msg = HashMap<String, String>;
 
+#[cfg(target_os = "windows")]
 #[derive(RustEmbed)]
-#[folder = "tool"]
+#[folder = "tool/windows"]
+struct Asset;
+
+#[cfg(target_os = "linux")]
+#[derive(RustEmbed)]
+#[folder = "tool/linux"]
+struct Asset;
+
+#[cfg(target_os = "macos")]
+#[derive(RustEmbed)]
+#[folder = "tool/macos"]
 struct Asset;
 
 #[derive(Debug, Clone)]
@@ -50,10 +61,6 @@ struct Rog {
     parse: String,
     lines: Vec<Line>,
 }
-
-// mod assets {
-// bindata!("tool");
-// }
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -109,32 +116,32 @@ fn main() -> Result<()> {
 }
 
 fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
-    // let mut gonkf = env::current_dir()?;
-    // gonkf.push("gonkf");
-
     #[cfg(target_os = "windows")]
-    // let gonkf_data = assets::get("tool/gonkf.exe").ok_or("gonkf not found !".to_string())?;
     let gonkf_data = Asset::get("gonkf.exe").unwrap();
 
     #[cfg(not(target_os = "windows"))]
-    // let gonkf_data = assets::get("tool/gonkf").ok_or("gonkf not found !".to_string())?;
     let gonkf_data = Asset::get("gonkf").unwrap();
 
-    let tmp_dir = tempdir()?;
-    let gonkf = tmp_dir.path().join("gonkf");
-    let mut f = fs::File::create(&gonkf)?;
+    let mut f = NamedTempFile::new()?;
     f.write_all(&gonkf_data)?;
     f.flush()?;
+
+    let gonkf_path = f.into_temp_path();
 
     // Set executable permissions.
     #[cfg(not(target_os = "windows"))]
     {
-        debug!("chmod +x {}", &gonkf.to_str().unwrap());
-        Command::new("chmod").arg("+x").arg(&gonkf).output()?;
+        debug!("chmod +x {}", &gonkf_path.to_str().unwrap());
+        Command::new("chmod").arg("+x").arg(&gonkf_path).output()?;
     }
 
-    let out = Command::new(&gonkf)
-        .arg("conv")
+    debug!(
+        "{} conv {} -o {}",
+        &gonkf_path.to_str().unwrap(),
+        input.as_ref().to_str().unwrap(),
+        output.as_ref().to_str().unwrap()
+    );
+    let out = Command::new(&gonkf_path)        .arg("conv")
         .arg(input.as_ref().to_path_buf())
         .arg("-o")
         .arg(output.as_ref().to_path_buf())
@@ -210,9 +217,8 @@ impl Rog {
 
     fn parse_with_csv(&self) -> Result<Self> {
         // Before open, translate to utf8.
-        let tmp_dir = tempdir()?;
-        let tmp_file = tmp_dir.path().join("rog");
-        to_utf8(&self.path, &tmp_file)?;
+        let tmp_file = NamedTempFile::new()?.into_temp_path();
+        to_utf8(&self.path, &tmp_file.to_path_buf())?;
         // Open rog.
         let f = fs::File::open(tmp_file)?;
         let mut rdr = csv::Reader::from_reader(f);
@@ -251,9 +257,8 @@ impl Rog {
     }
     fn parse_with_text(&self) -> Result<Self> {
         // Before open, translate to utf8.
-        let tmp_dir = tempdir()?;
-        let tmp_file = tmp_dir.path().join("rog");
-        to_utf8(&self.path, &tmp_file)?;
+        let tmp_file = NamedTempFile::new()?.into_temp_path();
+        to_utf8(&self.path, &tmp_file.to_path_buf())?;
         // Open rog.
         let f = fs::File::open(tmp_file)?;
         let rdr = BufReader::new(f).lines();
