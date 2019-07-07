@@ -1,0 +1,46 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/rust
+    steps:
+      - checkout
+      - run:
+          name: rustup version
+          command: rustup --version
+      - run:
+          name: rustup component add
+          command: rustup component add clippy rustfmt
+      - run:
+          name: install
+          command: cargo install cross
+      - run:
+          name: fmt
+          command: cargo fmt -- --check
+      - restore_cache:
+          keys:
+            - v1-cargo-lock-{{ checksum "Cargo.lock" }}
+      - run:
+          name: build
+          command: cargo build
+      # - run:
+          # name: lint
+          # command: cargo clippy -- -D warnings
+      - save_cache:
+          key: v1-cargo-lock-{{ checksum "Cargo.lock" }}
+          paths:
+            - "/usr/local/cargo/registry"
+            - "target"
+      - run:
+          name: set env
+          command: export RUST_LOG=rog=debug
+      - run:
+          name: ready for test
+          command: ./tool/linux/gonkf conv -d sjis ./test/Application_20190503.csv -o ./test/Application_20190503.csv; cat ./test/Application_20190503.csv
+      - run:
+          name: ready for test
+          command: ./tool/linux/gonkf conv -d sjis ./test/System_20190503.csv -o ./test/System_20190503.csv; cat ./test/System_20190503.csv
+      - run:
+          name: test
+          command: cargo test -- --nocapture
+

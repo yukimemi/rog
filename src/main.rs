@@ -500,6 +500,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         // debug!("{:#?}", rogs);
+        dbg!(&rogs);
         rogs.iter().for_each(|rog| match rog {
             Ok(rog) => match rog.name.as_str() {
                 "system_evtx" => assert_eq!(rog.lines.len(), 6),
