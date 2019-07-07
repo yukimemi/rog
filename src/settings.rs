@@ -26,9 +26,11 @@ pub struct Rog {
 pub struct Out {
     pub path: String,
     pub format: String,
-    pub fields: Option<Vec<String>>,
+    pub fields: Vec<String>,
     #[serde(default)]
     pub bom: bool,
+    pub grep: Option<Vec<String>>,
+    pub grep_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

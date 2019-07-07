@@ -27,3 +27,9 @@ path = "./dst/merge.csv"
 format = "csv"
 fields = ["time","name", "level","msg"]
 bom = true
+grep = [
+  "WARN",
+  "ERROR",
+  "日本語",
+]
+grep_path = "./dst/merge_grep.csv"
