@@ -1,12 +1,12 @@
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
-use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Capture {
     Text(String),
-    Csv(HashMap<String, usize>),
+    Csv(Vec<String>),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -15,6 +15,10 @@ pub struct Rog {
     #[serde(rename = "match")]
     pub match_: String,
     pub capture: Capture,
+    #[serde(default)]
+    pub header_replace: bool,
+    #[serde(default)]
+    pub header_add: bool,
     pub parse: String,
 }
 
@@ -23,6 +27,8 @@ pub struct Out {
     pub path: String,
     pub format: String,
     pub fields: Option<Vec<String>>,
+    #[serde(default)]
+    pub bom: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -33,11 +39,11 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new(cfg: &str) -> Result<Self, ConfigError> {
+    pub fn new<P: AsRef<Path>>(cfg: P) -> Result<Self, ConfigError> {
         let mut s = Config::new();
 
         // Start off by merging in the "default" configuration file
-        s.merge(File::with_name(cfg))?;
+        s.merge(File::with_name(cfg.as_ref().to_str().unwrap()))?;
 
         // Add in a local configuration file
         // This file shouldn't be checked in to git

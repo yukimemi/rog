@@ -3,13 +3,17 @@ debug = true
 [[rogs]]
 name = "system_evtx"
 match = "System.*csv$"
-capture = {"time" = 0, "level" = 1, "msg" = 2}
+# capture = {"time" = 0, "level" = 1, "msg" = 2}
+capture = ["time", "level", "msg"]
+header_replace = true
 parse = "%Y/%m/%d %H:%M"
 
 [[rogs]]
 name = "app_evtx"
 match = "Application.*csv$"
-capture = {"time" = 0, "level" = 1, "msg" = 2}
+# capture = {"time" = 0, "level" = 1, "msg" = 2}
+capture = ["time", "level", "msg"]
+header_add = true
 parse = "%Y/%m/%d %H:%M:%S"
 
 [[rogs]]
@@ -22,3 +26,4 @@ parse = "%Y/%m/%d-%H:%M:%S.%3f"
 path = "./dst/merge.csv"
 format = "csv"
 fields = ["time","name", "level","msg"]
+bom = true

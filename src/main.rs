@@ -7,8 +7,7 @@ use csv;
 use failure::Error;
 use log::*;
 use regex::Regex;
-use settings::{Capture, Settings};
-use std::collections::HashMap;
+use serde_derive::Deserialize;
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -19,11 +18,10 @@ use std::thread;
 use tempfile::NamedTempFile;
 use walkdir::{DirEntry, WalkDir};
 #[macro_use]
-extern crate bindata;
-#[macro_use]
-extern crate bindata_impl;
-#[macro_use]
 extern crate rust_embed;
+
+use settings::{Capture, Settings};
+use std::collections::HashMap;
 
 mod settings;
 
@@ -58,11 +56,25 @@ struct Rog {
     name: String,
     path: PathBuf,
     capture: Capture,
+    header_replace: bool,
+    header_add: bool,
     parse: String,
     lines: Vec<Line>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+struct LogCfg {
+    #[serde(default = "set_loglevel")]
+    rust_log: String,
+}
+
+fn set_loglevel() -> String {
+    "info".to_string()
+}
+
 fn main() -> Result<()> {
+    let log_cfg = envy::from_env::<LogCfg>()?;
+    env::set_var("RUST_LOG", log_cfg.rust_log);
     pretty_env_logger::init();
     let matches = app_from_crate!()
         .setting(AppSettings::DeriveDisplayOrder)
@@ -141,12 +153,13 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
         input.as_ref().to_str().unwrap(),
         output.as_ref().to_str().unwrap()
     );
-    let out = Command::new(&gonkf_path)        .arg("conv")
+    let out = Command::new(&gonkf_path)
+        .arg("conv")
         .arg(input.as_ref().to_path_buf())
         .arg("-o")
         .arg(output.as_ref().to_path_buf())
         .output()?;
-    // dbg!(&out);
+    debug!("{:#?}", &out);
     Ok(())
 }
 
@@ -191,18 +204,64 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
         &out_path.to_str().unwrap(),
         len
     );
+
+    if out.bom {
+        let content = fs::read_to_string(&out_path)?;
+        let mut w = fs::File::create(&out_path)?;
+        w.write_all(&[0xEF, 0xBB, 0xBF])?;
+        write!(w, "{}", content)?;
+        w.flush()?;
+    }
     Ok(())
 }
 
 impl Rog {
-    fn new<P: AsRef<Path>>(name: String, path: P, capture: &Capture, parse: String) -> Rog {
+    fn new<P: AsRef<Path>>(
+        name: String,
+        path: P,
+        capture: &Capture,
+        header_replace: bool,
+        header_add: bool,
+        parse: String,
+    ) -> Rog {
         Rog {
             name,
             path: Path::new(path.as_ref()).to_path_buf(),
             capture: capture.clone(),
+            header_replace,
+            header_add,
             parse,
             lines: vec![],
         }
+    }
+
+    fn fix_header<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        debug!("Open rog [{}]", path.as_ref().to_str().unwrap());
+        if self.header_add {
+            let content = fs::read_to_string(&path)?;
+            let mut w = fs::File::create(&path)?;
+            if let Capture::Csv(header) = &self.capture {
+                writeln!(w, "{}", header.join(","))?;
+                write!(w, "{}", content)?;
+                w.flush()?;
+            }
+        }
+        if self.header_replace {
+            let content = fs::read_to_string(&path)?;
+            let mut w = fs::File::create(&path)?;
+            if let Capture::Csv(header) = &self.capture {
+                writeln!(w, "{}", header.join(","))?;
+                content.lines().enumerate().for_each(|(i, v)| {
+                    if i == 0 {
+                        debug!("skip header !");
+                    } else {
+                        writeln!(w, "{}", v).unwrap();
+                    }
+                });
+                w.flush()?;
+            }
+        }
+        Ok(())
     }
 
     fn parse_lines(&self) -> Result<Self> {
@@ -219,42 +278,44 @@ impl Rog {
         // Before open, translate to utf8.
         let tmp_file = NamedTempFile::new()?.into_temp_path();
         to_utf8(&self.path, &tmp_file.to_path_buf())?;
+        self.fix_header(&tmp_file)?;
         // Open rog.
         let f = fs::File::open(tmp_file)?;
-        let mut rdr = csv::Reader::from_reader(f);
-        let mut lines: Vec<Line> = Vec::new();
-        if let Capture::Csv(cap) = &self.capture {
-            rdr.records().for_each(|r| match r {
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .flexible(true)
+            .from_reader(f);
+
+        let lines: Vec<Line> = rdr
+            .deserialize()
+            .filter_map(|r: std::result::Result<Msg, csv::Error>| match r {
                 Ok(r) => {
-                    let mut line = Line {
-                        time: Local::now(),
-                        msg: HashMap::new(),
-                    };
-                    line.msg.insert("name".to_string(), self.name.to_string());
-                    cap.iter().for_each(|(k, v)| {
-                        match r.get(*v) {
-                            Some(col) => {
-                                if k == "time" {
-                                    line.time = Local.datetime_from_str(col, &self.parse).expect(
-                                        &format!("Parse error {:#?} {:#?}", col, &self.parse),
-                                    );
-                                }
-                                line.msg.insert(k.to_string(), col.to_string());
-                            }
-                            None => eprintln!("{:#?} has not {} column !", r, v),
-                        };
-                    });
-                    lines.push(line);
+                    if let Some(time) = r.get("time") {
+                        Some(Line {
+                            time: Local.datetime_from_str(time, &self.parse).expect(&format!(
+                                "time parse error {:#?} {:#?}",
+                                time, &self.parse
+                            )),
+                            msg: r,
+                        })
+                    } else {
+                        eprintln!("time column not found ! {:#?}", r);
+                        None
+                    }
                 }
-                Err(e) => eprintln!("{}", e),
-            });
-        }
+                Err(e) => {
+                    eprintln!("Deserialize error {:#?}", e);
+                    None
+                }
+            })
+            .collect();
 
         Ok(Rog {
             lines,
             ..self.clone()
         })
     }
+
     fn parse_with_text(&self) -> Result<Self> {
         // Before open, translate to utf8.
         let tmp_file = NamedTempFile::new()?.into_temp_path();
@@ -318,6 +379,8 @@ fn get_rog<P: AsRef<Path>>(path: P, cfg: &Settings) -> Option<Rog> {
                 rog.name.to_string(),
                 &path,
                 &rog.capture,
+                rog.header_replace,
+                rog.header_add,
                 rog.parse.to_string(),
             )),
             false => None,
