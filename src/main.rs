@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
-use tempfile::{Builder, NamedTempFile};
+use tempfile::NamedTempFile;
 use walkdir::{DirEntry, WalkDir};
 #[macro_use]
 extern crate rust_embed;
@@ -127,21 +127,22 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
+fn get_gonkf() -> Result<PathBuf> {
+    let gonkf_path = env::temp_dir().join("gonkf.exe");
+
+    if gonkf_path.exists() {
+        return Ok(gonkf_path);
+    }
+
     #[cfg(target_os = "windows")]
     let gonkf_data = Asset::get("gonkf.exe").unwrap();
 
     #[cfg(not(target_os = "windows"))]
     let gonkf_data = Asset::get("gonkf").unwrap();
 
-    let mut f = Builder::new().suffix(".exe").tempfile()?;
-    // let tmp_dir = Builder::new().tempdir()?;
-    // let gonkf_path = tmp_dir.path().join("gonkf.exe");
-    // let mut f = fs::File::create(&gonkf_path)?;
+    let mut f = fs::File::create(&gonkf_path)?;
     f.write_all(&gonkf_data)?;
     f.flush()?;
-
-    let gonkf_path = f.into_temp_path().to_path_buf();
 
     // Set executable permissions.
     #[cfg(not(target_os = "windows"))]
@@ -150,24 +151,11 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
         Command::new("chmod").arg("+x").arg(&gonkf_path).output()?;
     }
 
-    // #[cfg(target_os = "windows")]
-    // {
-    // debug!("move {} to {}", &gonkf_path.to_str().unwrap(), gonkf_path.to_str().unwrap().to_string() + ".exe");
-    // Command::new("cmd").arg("/c").arg("move").arg(&gonkf_path.to_str().unwrap()).arg(gonkf_path.to_str().unwrap().to_string() + ".exe").output()?;
-    // dbg!(&format!(
-    // "move {} to {}",
-    // &gonkf_path.to_str().unwrap(),
-    // gonkf_path.with_extension("exe").to_str().unwrap()
-    // ));
-    // let out = Command::new("cmd")
-    // .arg("/c")
-    // .arg("move")
-    // .arg(&gonkf_path.to_str().unwrap())
-    // .arg(gonkf_path.with_extension("exe").to_str().unwrap())
-    // .output()?;
-    // dbg!(&out);
-    // gonkf_path = gonkf_path.with_extension("exe");
-    // }
+    Ok(gonkf_path)
+}
+
+fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
+    let gonkf_path = get_gonkf()?;
 
     debug!(
         "{} conv {} -o {}",
