@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
-use tempfile::NamedTempFile;
+use tempfile::{Builder, NamedTempFile};
 use walkdir::{DirEntry, WalkDir};
 #[macro_use]
 extern crate rust_embed;
@@ -134,11 +134,14 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     #[cfg(not(target_os = "windows"))]
     let gonkf_data = Asset::get("gonkf").unwrap();
 
-    let mut f = NamedTempFile::new()?;
+    let mut f = Builder::new().suffix(".exe").tempfile()?;
+    // let tmp_dir = Builder::new().tempdir()?;
+    // let gonkf_path = tmp_dir.path().join("gonkf.exe");
+    // let mut f = fs::File::create(&gonkf_path)?;
     f.write_all(&gonkf_data)?;
     f.flush()?;
 
-    let gonkf_path = f.into_temp_path();
+    let gonkf_path = f.into_temp_path().to_path_buf();
 
     // Set executable permissions.
     #[cfg(not(target_os = "windows"))]
@@ -147,19 +150,45 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
         Command::new("chmod").arg("+x").arg(&gonkf_path).output()?;
     }
 
+    // #[cfg(target_os = "windows")]
+    // {
+    // debug!("move {} to {}", &gonkf_path.to_str().unwrap(), gonkf_path.to_str().unwrap().to_string() + ".exe");
+    // Command::new("cmd").arg("/c").arg("move").arg(&gonkf_path.to_str().unwrap()).arg(gonkf_path.to_str().unwrap().to_string() + ".exe").output()?;
+    // dbg!(&format!(
+    // "move {} to {}",
+    // &gonkf_path.to_str().unwrap(),
+    // gonkf_path.with_extension("exe").to_str().unwrap()
+    // ));
+    // let out = Command::new("cmd")
+    // .arg("/c")
+    // .arg("move")
+    // .arg(&gonkf_path.to_str().unwrap())
+    // .arg(gonkf_path.with_extension("exe").to_str().unwrap())
+    // .output()?;
+    // dbg!(&out);
+    // gonkf_path = gonkf_path.with_extension("exe");
+    // }
+
     debug!(
         "{} conv {} -o {}",
         &gonkf_path.to_str().unwrap(),
         input.as_ref().to_str().unwrap(),
         output.as_ref().to_str().unwrap()
     );
+    dbg!(&format!(
+        "{} conv {} -o {}",
+        &gonkf_path.to_str().unwrap(),
+        input.as_ref().to_str().unwrap(),
+        output.as_ref().to_str().unwrap()
+    ));
     let out = Command::new(&gonkf_path)
         .arg("conv")
         .arg(input.as_ref().to_path_buf())
         .arg("-o")
         .arg(output.as_ref().to_path_buf())
         .output()?;
-    debug!("{:#?}", &out);
+    // debug!("{:#?}", &out);
+    dbg!(&out);
     Ok(())
 }
 
