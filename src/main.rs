@@ -163,12 +163,12 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
         input.as_ref().to_str().unwrap(),
         output.as_ref().to_str().unwrap()
     );
-    dbg!(&format!(
-        "{} conv {} -o {}",
-        &gonkf_path.to_str().unwrap(),
-        input.as_ref().to_str().unwrap(),
-        output.as_ref().to_str().unwrap()
-    ));
+    // dbg!(&format!(
+    // "{} conv {} -o {}",
+    // &gonkf_path.to_str().unwrap(),
+    // input.as_ref().to_str().unwrap(),
+    // output.as_ref().to_str().unwrap()
+    // ));
     let out = Command::new(&gonkf_path)
         .arg("conv")
         .arg("-d")
@@ -177,8 +177,8 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
         .arg("-o")
         .arg(output.as_ref().to_path_buf())
         .output()?;
-    // debug!("{:#?}", &out);
-    dbg!(&out);
+    debug!("{:#?}", &out);
+    // dbg!(&out);
     Ok(())
 }
 
@@ -391,33 +391,42 @@ impl Rog {
         // rdr.for_each(|line| debug!("{:#?}", line));
         if let Capture::Text(cap) = &self.capture {
             let re = Regex::new(cap)?;
-            rdr.for_each(|r| match r {
+            rdr.enumerate().for_each(|(idx, r)| match r {
                 Ok(r) => {
                     let mut line = Line {
                         time: Local::now(),
                         msg: HashMap::new(),
                     };
-                    let caps = re
-                        .captures(&r)
-                        .expect("parse error ! Is the regex capture strings collect ?");
-                    line.time = Local
-                        .datetime_from_str(
-                            caps.name("time").expect("time is needed !").as_str(),
-                            &self.parse,
-                        )
-                        .expect(&format!(
-                            "Parse time error parse: {:#?} line: {:#?}",
-                            &self.parse, &r
-                        ));
-                    line.msg = re
-                        .capture_names()
-                        .flatten()
-                        .filter_map(|n| Some((n.to_string(), caps.name(n)?.as_str().to_string())))
-                        .collect();
-                    line.msg.insert("name".to_string(), self.name.to_string());
+                    if let Some(caps) = re.captures(&r) {
+                        line.time = Local
+                            .datetime_from_str(
+                                caps.name("time").expect("time is needed !").as_str(),
+                                &self.parse,
+                            )
+                            .expect(&format!(
+                                "Parse time error parse: {:#?} line: {:#?}",
+                                &self.parse, &r
+                            ));
+                        line.msg = re
+                            .capture_names()
+                            .flatten()
+                            .filter_map(|n| {
+                                Some((n.to_string(), caps.name(n)?.as_str().to_string()))
+                            })
+                            .collect();
+                        line.msg.insert("name".to_string(), self.name.to_string());
 
-                    // debug!("{:#?}", line);
-                    lines.push(line);
+                        // debug!("{:#?}", line);
+                        lines.push(line);
+                    } else {
+                        eprintln!(
+                            "Warn ! parse failed ! file: {:#?}, line: {:#?}, r: {:#?}, cap: {:#?}",
+                            &self.path,
+                            idx + 1,
+                            &r,
+                            &cap
+                        );
+                    }
                 }
                 Err(e) => eprintln!("{}", e),
             });
