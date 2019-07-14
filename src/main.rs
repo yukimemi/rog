@@ -171,6 +171,8 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     ));
     let out = Command::new(&gonkf_path)
         .arg("conv")
+        .arg("-d")
+        .arg("utf8")
         .arg(input.as_ref().to_path_buf())
         .arg("-o")
         .arg(output.as_ref().to_path_buf())
