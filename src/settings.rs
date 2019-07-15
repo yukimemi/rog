@@ -1,5 +1,6 @@
 use config::{Config, ConfigError, Environment, File};
 use serde_derive::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -29,7 +30,7 @@ pub struct Out {
     pub fields: Vec<String>,
     #[serde(default)]
     pub bom: bool,
-    pub grep: Option<Vec<String>>,
+    pub grep: Option<Vec<HashMap<String, String>>>,
     pub grep_path: Option<String>,
 }
 

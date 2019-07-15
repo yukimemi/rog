@@ -182,6 +182,33 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     Ok(())
 }
 
+fn grep_lines(lines: Vec<&Line>, greps: Vec<HashMap<String, String>>) -> Vec<&Line> {
+    // compile regex patterns.
+    let res: Vec<HashMap<String, Regex>> = greps
+        .iter()
+        .map(|grep| {
+            grep.iter()
+                .map(|(k, v)| {
+                    (
+                        k.to_string(),
+                        Regex::new(v).expect(&format!("grep pattern error {:#?}", v)),
+                    )
+                })
+                .collect::<HashMap<String, Regex>>()
+        })
+        .collect();
+
+    lines
+        .into_iter()
+        .filter(|line| {
+            res.iter().any(|re| {
+                re.iter()
+                    .all(|(k, v)| v.is_match(line.msg.get(k).unwrap_or(&"".to_string())))
+            })
+        })
+        .collect()
+}
+
 fn grep(content: String, greps: Vec<String>) -> Vec<String> {
     // Compile regex patterns.
     let res: Vec<Regex> = greps
@@ -197,6 +224,7 @@ fn grep(content: String, greps: Vec<String>) -> Vec<String> {
 }
 
 fn add_bom<P: AsRef<Path>>(path: P) -> Result<()> {
+    // TODO: Add bom only no bom.
     let content = fs::read_to_string(&path)?;
     let mut w = fs::File::create(&path)?;
     w.write_all(&[0xEF, 0xBB, 0xBF])?;
@@ -227,7 +255,7 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
     wtr.write_record(&header)?;
 
     let len = lines.len();
-    lines.into_iter().for_each(|line| {
+    lines.iter().for_each(|line| {
         // Make output records.
         let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S.%3f").to_string()];
         &out.fields.iter().for_each(|field| {
@@ -248,22 +276,53 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
 
     // grep word.
     if let Some(greps) = &out.grep {
-        let content = fs::read_to_string(&out_path)?;
-        let grep_data = grep(content, greps.to_vec());
+        // let content = fs::read_to_string(&out_path)?;
+        // let grep_data = grep(content, greps.to_vec());
+
+        let grep_data = grep_lines(lines.clone(), greps.to_vec());
 
         let grep_path = match &out.grep_path {
             Some(p) => p.as_str(),
             None => &out_path.to_str().unwrap(),
         };
-        let mut w = fs::File::create(&grep_path)?;
-        writeln!(w, "{}", header.join(","))?;
-        write!(w, "{}", grep_data.join("\n"))?;
-        w.flush()?;
+        let grep_path = Path::new(grep_path);
+        if let Some(p) = grep_path.parent() {
+            fs::create_dir_all(p)?;
+        }
+        let mut wtr = csv::Writer::from_path(&grep_path)?;
+
+        // Write header.
+        wtr.write_record(&header)?;
+
+        let len = grep_data.len();
+        grep_data.into_iter().for_each(|line| {
+            // Make output records.
+            let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S.%3f").to_string()];
+            &out.fields.iter().for_each(|field| {
+                let def = "".to_string();
+                let f = line.msg.get(field).unwrap_or(&def);
+                v.push(f.to_string());
+            });
+            if let Err(e) = wtr.write_record(&v) {
+                eprintln!("write_record error: {:#?}", e);
+            }
+        });
+        wtr.flush()?;
         info!(
             "Write to csv [{}] ({} records)",
-            &grep_path,
-            grep_data.len()
+            &out_path.to_str().unwrap(),
+            len
         );
+
+        // let mut w = fs::File::create(&grep_path)?;
+        // writeln!(w, "{}", header.join(","))?;
+        // write!(w, "{}", grep_data.join("\n"))?;
+        // w.flush()?;
+        // info!(
+        // "Write to csv [{}] ({} records)",
+        // &grep_path,
+        // grep_data.len()
+        // );
 
         if out.bom {
             add_bom(&grep_path)?;
@@ -582,6 +641,29 @@ mod tests {
         // dbg!(&lines);
 
         assert_eq!(lines.len(), 26);
+    }
+
+    #[test]
+    fn test_grep() {
+        let settings = Settings::new("rog.toml").unwrap();
+        let rogs = get_test_rogs().iter().map(|e| e).collect::<Vec<_>>();
+        // Filter logs.
+        let rogs: Vec<Rog> = rogs
+            .iter()
+            .filter_map(|de| get_rog(de.path(), &settings))
+            .map(|rog| rog.parse_lines())
+            .flatten()
+            .collect();
+
+        // Sort rogs.
+        let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
+        lines.sort_by_key(|l| l.time);
+
+        // grep
+        if let Some(greps) = &settings.out.unwrap().grep {
+            let lines = grep_lines(lines, greps.to_vec());
+            assert_eq!(lines.len(), 5);
+        }
     }
 
     #[test]
