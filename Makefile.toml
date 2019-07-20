@@ -24,7 +24,7 @@ dependencies = ["clean"]
 [tasks.install]
 command = "cargo"
 args = ["install", "--force", "--path", "."]
-dependencies = ["test"]
+# dependencies = ["test"]
 
 [tasks.lint]
 command = "cargo"

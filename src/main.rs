@@ -75,7 +75,6 @@ fn set_loglevel() -> String {
 fn main() -> Result<()> {
     let log_cfg = envy::from_env::<LogCfg>()?;
     env::set_var("RUST_LOG", log_cfg.rust_log);
-    pretty_env_logger::init();
     let matches = app_from_crate!()
         .setting(AppSettings::DeriveDisplayOrder)
         .arg(
@@ -89,6 +88,11 @@ fn main() -> Result<()> {
 
     // Read config.
     let settings = Settings::new(cfg)?;
+
+    if settings.debug {
+        env::set_var("RUST_LOG", "debug");
+    }
+    pretty_env_logger::init();
 
     // debug!("{:#?}", &settings);
 
@@ -135,7 +139,8 @@ fn get_gonkf() -> Result<PathBuf> {
     }
 
     #[cfg(target_os = "windows")]
-    let gonkf_data = Asset::get("gonkf.exe").unwrap();
+    let gonkf_data = Asset::get("nkf.exe").unwrap();
+    // let gonkf_data = Asset::get("gonkf.exe").unwrap();
 
     #[cfg(not(target_os = "windows"))]
     let gonkf_data = Asset::get("gonkf").unwrap();
@@ -147,7 +152,7 @@ fn get_gonkf() -> Result<PathBuf> {
     // Set executable permissions.
     #[cfg(not(target_os = "windows"))]
     {
-        debug!("chmod +x {}", &gonkf_path.to_str().unwrap());
+        // debug!("chmod +x {}", &gonkf_path.to_str().unwrap());
         Command::new("chmod").arg("+x").arg(&gonkf_path).output()?;
     }
 
@@ -157,28 +162,55 @@ fn get_gonkf() -> Result<PathBuf> {
 fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     let gonkf_path = get_gonkf()?;
 
-    debug!(
-        "{} conv {} -o {}",
-        &gonkf_path.to_str().unwrap(),
-        input.as_ref().to_str().unwrap(),
-        output.as_ref().to_str().unwrap()
-    );
-    // dbg!(&format!(
+    // debug!(
     // "{} conv {} -o {}",
     // &gonkf_path.to_str().unwrap(),
     // input.as_ref().to_str().unwrap(),
     // output.as_ref().to_str().unwrap()
-    // ));
+    // );
+    // let out = Command::new(&gonkf_path)
+    // .arg("conv")
+    // .arg("-d")
+    // .arg("utf8")
+    // .arg(input.as_ref().to_path_buf())
+    // .arg("-o")
+    // .arg(output.as_ref().to_path_buf())
+    // .output()?;
     let out = Command::new(&gonkf_path)
-        .arg("conv")
-        .arg("-d")
-        .arg("utf8")
+        .arg("-w")
         .arg(input.as_ref().to_path_buf())
-        .arg("-o")
-        .arg(output.as_ref().to_path_buf())
         .output()?;
-    debug!("{:#?}", &out);
+
+    // let local_datetime: DateTime<Local> = Local::now();
+    // let out_path = env::temp_dir().join(local_datetime.format("%Y%m%d_%H%M%S.%3f").to_string());
+    // let ret = Command::new(&gonkf_path)
+    // .arg("conv")
+    // .arg("-d")
+    // .arg("utf8")
+    // .arg(input.as_ref().to_path_buf())
+    // .arg("-o")
+    // .arg(&out_path)
+    // .output()?;
+    // debug!(
+    // "{} conv {} -o {}",
+    // &gonkf_path.to_str().unwrap(),
+    // input.as_ref().to_str().unwrap(),
+    // out_path.to_str().unwrap()
+    // );
+
+    // debug!(
+        // "{} -w {} > {}",
+        // &gonkf_path.to_str().unwrap(),
+        // input.as_ref().to_str().unwrap(),
+        // &output.as_ref().to_str().unwrap()
+    // );
+    // debug!("{:#?}", &out);
     // dbg!(&out);
+    fs::write(&output, &out.stdout)?;
+    // let mut w = fs::File::create(&output)?;
+    // w.write_all(&out.stdout)?;
+    // w.flush()?;
+
     Ok(())
 }
 
@@ -310,19 +342,9 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
         wtr.flush()?;
         info!(
             "Write to csv [{}] ({} records)",
-            &out_path.to_str().unwrap(),
+            &grep_path.to_str().unwrap(),
             len
         );
-
-        // let mut w = fs::File::create(&grep_path)?;
-        // writeln!(w, "{}", header.join(","))?;
-        // write!(w, "{}", grep_data.join("\n"))?;
-        // w.flush()?;
-        // info!(
-        // "Write to csv [{}] ({} records)",
-        // &grep_path,
-        // grep_data.len()
-        // );
 
         if out.bom {
             add_bom(&grep_path)?;
@@ -358,7 +380,7 @@ impl Rog {
     }
 
     fn fix_header<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        debug!("Open rog [{}]", path.as_ref().to_str().unwrap());
+        // debug!("Open rog [{}]", path.as_ref().to_str().unwrap());
         if self.header_add {
             let content = fs::read_to_string(&path)?;
             let mut w = fs::File::create(&path)?;
@@ -375,7 +397,7 @@ impl Rog {
                 writeln!(w, "{}", header.join(","))?;
                 content.lines().enumerate().for_each(|(i, v)| {
                     if i == 0 {
-                        debug!("skip header !");
+                        // debug!("skip header !");
                     } else {
                         writeln!(w, "{}", v).unwrap();
                     }
@@ -402,11 +424,17 @@ impl Rog {
         to_utf8(&self.path, &tmp_file.to_path_buf())?;
         self.fix_header(&tmp_file)?;
         // Open rog.
+        // debug!("Open rog [{:#?}]", &tmp_file);
         let f = fs::File::open(tmp_file)?;
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(true)
             .flexible(true)
             .from_reader(f);
+
+        // rdr.records().next();
+        // let pos = rdr.position().clone();
+        // rdr.records().for_each(|r| debug!("{:#?}", r));
+        // rdr.seek(pos)?;
 
         let lines: Vec<Line> = rdr
             .deserialize()
@@ -427,11 +455,13 @@ impl Rog {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Deserialize error {:#?}", e);
+                    debug!("Deserialize error {:#?}", e);
                     None
                 }
             })
             .collect();
+
+        // debug!("{:#?}", lines);
 
         Ok(Rog {
             lines,
@@ -478,7 +508,7 @@ impl Rog {
                         // debug!("{:#?}", line);
                         lines.push(line);
                     } else {
-                        eprintln!(
+                        debug!(
                             "Warn ! parse failed ! file: {:#?}, line: {:#?}, r: {:#?}, cap: {:#?}",
                             &self.path,
                             idx + 1,
