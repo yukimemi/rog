@@ -1,4 +1,7 @@
+use chrono::offset::TimeZone;
+use chrono::{DateTime, Local};
 use config::{Config, ConfigError, Environment, File};
+use serde::{self, Deserialize, Deserializer};
 use serde_derive::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -32,6 +35,12 @@ pub struct Out {
     pub bom: bool,
     pub grep: Option<Vec<HashMap<String, String>>>,
     pub grep_path: Option<String>,
+    #[serde(default)]
+    #[serde(deserialize_with = "time_default")]
+    pub start: Option<DateTime<Local>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "time_default")]
+    pub end: Option<DateTime<Local>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -39,6 +48,23 @@ pub struct Settings {
     pub debug: bool,
     pub rogs: Vec<Rog>,
     pub out: Option<Out>,
+}
+
+fn time_default<'de, D>(d: D) -> Result<Option<DateTime<Local>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(d)?;
+    if &s == "" {
+        Ok(None)
+    } else if let Ok(time) = Local.datetime_from_str(&s, "%Y%m%d") {
+        Ok(Some(time))
+    } else {
+        Local
+            .datetime_from_str(&s, "%Y%m%d%H%M%S")
+            .map_err(serde::de::Error::custom)
+            .map(|d| Some(d))
+    }
 }
 
 impl Settings {

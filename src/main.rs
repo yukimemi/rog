@@ -2,7 +2,6 @@ use chrono::offset::TimeZone;
 use chrono::{DateTime, Local};
 use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
-    ArgMatches,
 };
 use csv;
 use failure::Error;
@@ -21,7 +20,7 @@ use walkdir::{DirEntry, WalkDir};
 #[macro_use]
 extern crate rust_embed;
 
-use settings::{Capture, Settings};
+use settings::{Capture, Out, Settings};
 use std::collections::HashMap;
 
 mod settings;
@@ -83,10 +82,10 @@ fn main() -> Result<()> {
                 .default_value("rog.toml"),
         )
         .arg(Arg::from_usage(
-            "-s --start [START_TIME] 'yyyymmdd (or yyyymmddhhmmssfff)'",
+            "-s --start [START_TIME] 'yyyymmdd (or yyyymmddhhmmss)'",
         ))
         .arg(Arg::from_usage(
-            "-e --end [END_TIME] 'yyyymmdd (or yyyymmddhhmmssfff)'",
+            "-e --end [END_TIME] 'yyyymmdd (or yyyymmddhhmmss)'",
         ))
         .arg(Arg::from_usage("<PATH> 'log path'").default_value("."))
         .arg(Arg::from_usage("-o --output [OUTPUT_PATH] 'output path'"))
@@ -107,11 +106,11 @@ fn main() -> Result<()> {
 
     // debug!("{:#?}", &settings);
     if let Some(output) = matches.value_of("output") {
-        match settings.out {
-            Some(out) => {
-                settings.out?.path = output.to_string();
-            }
-            None => {}
+        if let Some(out) = settings.out {
+            settings.out = Some(Out {
+                path: output.to_string(),
+                ..out
+            });
         }
     }
 
@@ -142,6 +141,52 @@ fn main() -> Result<()> {
     // Sort rogs.
     let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
     lines.sort_by_key(|l| l.time);
+
+    // Filter lines by time.
+    if let Some(start) = matches.value_of("start") {
+        if let Some(out) = settings.out {
+            settings.out = Some(Out {
+                start: Some(
+                    Local
+                        .datetime_from_str(&(start.to_owned() + "0000"), "%Y%m%d%H%M")
+                        .unwrap_or_else(|_| {
+                            Local
+                                .datetime_from_str(start, "%Y%m%d%H%M%S")
+                                .expect(&format!("time parse error {:#?}", start))
+                        }),
+                ),
+                ..out
+            });
+        }
+    }
+    if let Some(end) = matches.value_of("end") {
+        if let Some(out) = settings.out {
+            settings.out = Some(Out {
+                end: Some(
+                    Local
+                        .datetime_from_str(&(end.to_owned() + "0000"), "%Y%m%d%H%M")
+                        .unwrap_or_else(|_| {
+                            Local
+                                .datetime_from_str(end, "%Y%m%d%H%M%S")
+                                .expect(&format!("time parse error {:#?}", end))
+                        }),
+                ),
+                ..out
+            });
+        }
+    }
+
+    // Filter lines for time.
+    let out = settings.out.as_ref().expect("out setting is needed now !");
+    if let Some(start) = out.start {
+        lines = lines
+            .into_iter()
+            .filter(|line| line.time >= start)
+            .collect();
+    }
+    if let Some(end) = out.end {
+        lines = lines.into_iter().filter(|line| line.time <= end).collect();
+    }
 
     // Output rogs.
     // settings.out.
@@ -181,54 +226,32 @@ fn get_gonkf() -> Result<PathBuf> {
 fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     let gonkf_path = get_gonkf()?;
 
-    // debug!(
-    // "{} conv {} -o {}",
-    // &gonkf_path.to_str().unwrap(),
-    // input.as_ref().to_str().unwrap(),
-    // output.as_ref().to_str().unwrap()
-    // );
-    // let out = Command::new(&gonkf_path)
-    // .arg("conv")
-    // .arg("-d")
-    // .arg("utf8")
-    // .arg(input.as_ref().to_path_buf())
-    // .arg("-o")
-    // .arg(output.as_ref().to_path_buf())
-    // .output()?;
-    let out = Command::new(&gonkf_path)
-        .arg("-w")
-        .arg(input.as_ref().to_path_buf())
-        .output()?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        // debug!(
+        // "{} conv {} -o {}",
+        // &gonkf_path.to_str().unwrap(),
+        // input.as_ref().to_str().unwrap(),
+        // output.as_ref().to_str().unwrap()
+        // );
+        let out = Command::new(&gonkf_path)
+            .arg("conv")
+            .arg("-d")
+            .arg("utf8")
+            .arg(input.as_ref().to_path_buf())
+            .arg("-o")
+            .arg(output.as_ref().to_path_buf())
+            .output()?;
+    }
 
-    // let local_datetime: DateTime<Local> = Local::now();
-    // let out_path = env::temp_dir().join(local_datetime.format("%Y%m%d_%H%M%S.%3f").to_string());
-    // let ret = Command::new(&gonkf_path)
-    // .arg("conv")
-    // .arg("-d")
-    // .arg("utf8")
-    // .arg(input.as_ref().to_path_buf())
-    // .arg("-o")
-    // .arg(&out_path)
-    // .output()?;
-    // debug!(
-    // "{} conv {} -o {}",
-    // &gonkf_path.to_str().unwrap(),
-    // input.as_ref().to_str().unwrap(),
-    // out_path.to_str().unwrap()
-    // );
-
-    // debug!(
-    // "{} -w {} > {}",
-    // &gonkf_path.to_str().unwrap(),
-    // input.as_ref().to_str().unwrap(),
-    // &output.as_ref().to_str().unwrap()
-    // );
-    // debug!("{:#?}", &out);
-    // dbg!(&out);
-    fs::write(&output, &out.stdout)?;
-    // let mut w = fs::File::create(&output)?;
-    // w.write_all(&out.stdout)?;
-    // w.flush()?;
+    #[cfg(target_os = "windows")]
+    {
+        let out = Command::new(&gonkf_path)
+            .arg("-w")
+            .arg(input.as_ref().to_path_buf())
+            .output()?;
+        fs::write(&output, &out.stdout)?;
+    }
 
     Ok(())
 }
@@ -294,6 +317,7 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
     // };
 
     let out = &cfg.out.as_ref().expect("out setting is needed now !");
+
     let out_path = Path::new(&out.path);
     if let Some(p) = out_path.parent() {
         fs::create_dir_all(p)?;
