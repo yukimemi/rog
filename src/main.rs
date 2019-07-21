@@ -2,6 +2,7 @@ use chrono::offset::TimeZone;
 use chrono::{DateTime, Local};
 use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
+    ArgMatches,
 };
 use csv;
 use failure::Error;
@@ -81,13 +82,23 @@ fn main() -> Result<()> {
             Arg::from_usage("-c --cfg [CFG_PATH] 'config file (toml) path'")
                 .default_value("rog.toml"),
         )
+        .arg(Arg::from_usage(
+            "-s --start [START_TIME] 'yyyymmdd (or yyyymmddhhmmssfff)'",
+        ))
+        .arg(Arg::from_usage(
+            "-e --end [END_TIME] 'yyyymmdd (or yyyymmddhhmmssfff)'",
+        ))
         .arg(Arg::from_usage("<PATH> 'log path'").default_value("."))
+        .arg(Arg::from_usage("-o --output [OUTPUT_PATH] 'output path'"))
+        .arg(Arg::from_usage(
+            "-g --grep [GREP_OUTPUT_PATH] 'grep output path'",
+        ))
         .get_matches();
 
     let cfg = matches.value_of("cfg").unwrap();
 
     // Read config.
-    let settings = Settings::new(cfg)?;
+    let mut settings = Settings::new(cfg)?;
 
     if settings.debug {
         env::set_var("RUST_LOG", "debug");
@@ -95,6 +106,14 @@ fn main() -> Result<()> {
     pretty_env_logger::init();
 
     // debug!("{:#?}", &settings);
+    if let Some(output) = matches.value_of("output") {
+        match settings.out {
+            Some(out) => {
+                settings.out?.path = output.to_string();
+            }
+            None => {}
+        }
+    }
 
     // Get logs.
     let input = matches.value_of("PATH").unwrap();
@@ -199,10 +218,10 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
     // );
 
     // debug!(
-        // "{} -w {} > {}",
-        // &gonkf_path.to_str().unwrap(),
-        // input.as_ref().to_str().unwrap(),
-        // &output.as_ref().to_str().unwrap()
+    // "{} -w {} > {}",
+    // &gonkf_path.to_str().unwrap(),
+    // input.as_ref().to_str().unwrap(),
+    // &output.as_ref().to_str().unwrap()
     // );
     // debug!("{:#?}", &out);
     // dbg!(&out);
