@@ -113,6 +113,14 @@ fn main() -> Result<()> {
             });
         }
     }
+    if let Some(grep) = matches.value_of("grep") {
+        if let Some(out) = settings.out {
+            settings.out = Some(Out {
+                grep_path: Some(grep.to_string()),
+                ..out
+            });
+        }
+    }
 
     // Get logs.
     let input = matches.value_of("PATH").unwrap();
