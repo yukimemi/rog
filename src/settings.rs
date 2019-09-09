@@ -23,7 +23,7 @@ pub struct Rog {
     pub header_replace: bool,
     #[serde(default)]
     pub header_add: bool,
-    pub parse: String,
+    pub parse: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

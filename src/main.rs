@@ -58,7 +58,7 @@ struct Rog {
     capture: Capture,
     header_replace: bool,
     header_add: bool,
-    parse: String,
+    parse: Vec<String>,
     lines: Vec<Line>,
 }
 
@@ -417,7 +417,7 @@ impl Rog {
         capture: &Capture,
         header_replace: bool,
         header_add: bool,
-        parse: String,
+        parse: Vec<String>,
     ) -> Rog {
         Rog {
             name,
@@ -494,6 +494,7 @@ impl Rog {
                     r.insert("name".to_string(), self.name.to_string());
                     r.insert("path".to_string(), self.path.to_str().unwrap().to_string());
                     if let Some(time) = r.get("time") {
+                        &self.parse.iter().find_map(|p| {
                         Some(Line {
                             time: Local.datetime_from_str(time, &self.parse).expect(&format!(
                                 "time parse error {:#?} {:#?}",
@@ -597,7 +598,7 @@ fn get_rog<P: AsRef<Path>>(path: P, cfg: &Settings) -> Option<Rog> {
                 &rog.capture,
                 rog.header_replace,
                 rog.header_add,
-                rog.parse.to_string(),
+                rog.parse,
             )),
             false => None,
         }
