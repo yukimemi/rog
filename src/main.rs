@@ -492,6 +492,7 @@ impl Rog {
             .filter_map(|r: std::result::Result<Msg, csv::Error>| match r {
                 Ok(mut r) => {
                     r.insert("name".to_string(), self.name.to_string());
+                    r.insert("path".to_string(), self.path.to_str().unwrap().to_string());
                     if let Some(time) = r.get("time") {
                         Some(Line {
                             time: Local.datetime_from_str(time, &self.parse).expect(&format!(
@@ -555,6 +556,8 @@ impl Rog {
                             })
                             .collect();
                         line.msg.insert("name".to_string(), self.name.to_string());
+                        line.msg
+                            .insert("path".to_string(), self.path.to_str().unwrap().to_string());
 
                         // debug!("{:#?}", line);
                         lines.push(line);
