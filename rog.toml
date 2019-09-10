@@ -6,7 +6,7 @@ match = "System.*csv$"
 # capture = {"time" = 0, "level" = 1, "msg" = 2}
 capture = ["time", "level", "msg"]
 header_replace = true
-parse = "%Y/%m/%d %H:%M"
+parse = ["%Y/%m/%d %H:%M"]
 
 [[rogs]]
 name = "app_evtx"
@@ -14,13 +14,13 @@ match = "Application.*csv$"
 # capture = {"time" = 0, "level" = 1, "msg" = 2}
 capture = ["time", "level", "msg"]
 header_add = true
-parse = "%Y/%m/%d %H:%M:%S"
+parse = ["%Y/%m/%d %H:%M:%S"]
 
 [[rogs]]
 name = "app"
 match = "app.*log$"
 capture = '(?P<time>[0-9/]+-[0-9:.]+) (?P<level>[^ ]+) (?P<msg>.*)'
-parse = "%Y/%m/%d-%H:%M:%S.%3f"
+parse = ["%Y/%m/%d-%H:%M:%S.%3f"]
 
 [out]
 path = "./dst/merge.csv"

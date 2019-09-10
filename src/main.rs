@@ -494,13 +494,16 @@ impl Rog {
                     r.insert("name".to_string(), self.name.to_string());
                     r.insert("path".to_string(), self.path.to_str().unwrap().to_string());
                     if let Some(time) = r.get("time") {
-                        &self.parse.iter().find_map(|p| {
-                        Some(Line {
-                            time: Local.datetime_from_str(time, &self.parse).expect(&format!(
-                                "time parse error {:#?} {:#?}",
-                                time, &self.parse
-                            )),
-                            msg: r,
+                        self.parse.iter().find_map(|p| {
+                            if let Ok(time) = Local.datetime_from_str(time, p) {
+                                Some(Line {
+                                    time: time,
+                                    msg: r.clone(),
+                                })
+                            } else {
+                                eprintln!("time parse error {:#?} {:#?}", time, &p);
+                                None
+                            }
                         })
                     } else {
                         eprintln!("time column not found ! {:#?}", r);
@@ -540,28 +543,39 @@ impl Rog {
                         msg: HashMap::new(),
                     };
                     if let Some(caps) = re.captures(&r) {
-                        line.time = Local
-                            .datetime_from_str(
+                        let time = self.parse.iter().find_map(|p| {
+                            if let Ok(time) = Local.datetime_from_str(
                                 caps.name("time").expect("time is needed !").as_str(),
-                                &self.parse,
-                            )
-                            .expect(&format!(
-                                "Parse time error parse: {:#?} line: {:#?}",
-                                &self.parse, &r
-                            ));
-                        line.msg = re
-                            .capture_names()
-                            .flatten()
-                            .filter_map(|n| {
-                                Some((n.to_string(), caps.name(n)?.as_str().to_string()))
-                            })
-                            .collect();
-                        line.msg.insert("name".to_string(), self.name.to_string());
-                        line.msg
-                            .insert("path".to_string(), self.path.to_str().unwrap().to_string());
+                                &p,
+                            ) {
+                                Some(time)
+                            } else {
+                                eprintln!("time parse error {:#?} {:#?}", &r, &p);
+                                None
+                            }
+                        });
 
-                        // debug!("{:#?}", line);
-                        lines.push(line);
+                        if let Some(time) = time {
+                            line.time = time;
+
+                            line.msg = re
+                                .capture_names()
+                                .flatten()
+                                .filter_map(|n| {
+                                    Some((n.to_string(), caps.name(n)?.as_str().to_string()))
+                                })
+                                .collect();
+                            line.msg.insert("name".to_string(), self.name.to_string());
+                            line.msg.insert(
+                                "path".to_string(),
+                                self.path.to_str().unwrap().to_string(),
+                            );
+
+                            // debug!("{:#?}", line);
+                            lines.push(line);
+                        } else {
+                            eprintln!("no time parse error {:#?} {:#?}", &r, &self.parse);
+                        }
                     } else {
                         debug!(
                             "Warn ! parse failed ! file: {:#?}, line: {:#?}, r: {:#?}, cap: {:#?}",
@@ -598,7 +612,7 @@ fn get_rog<P: AsRef<Path>>(path: P, cfg: &Settings) -> Option<Rog> {
                 &rog.capture,
                 rog.header_replace,
                 rog.header_add,
-                rog.parse,
+                rog.parse.clone(),
             )),
             false => None,
         }
