@@ -1,5 +1,5 @@
 use chrono::offset::TimeZone;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Duration, Local};
 use config::{Config, ConfigError, Environment, File};
 use serde::{self, Deserialize, Deserializer};
 use serde_derive::Deserialize;
@@ -24,6 +24,9 @@ pub struct Rog {
     #[serde(default)]
     pub header_add: bool,
     pub parse: Vec<String>,
+    #[serde(default)]
+    #[serde(deserialize_with = "time_duration")]
+    pub add_time: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,6 +68,14 @@ where
             .map_err(serde::de::Error::custom)
             .map(|d| Some(d))
     }
+}
+fn time_duration<'de, D>(d: D) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let num = i64::deserialize(d)?;
+    let dur = Duration::nanoseconds(num);
+    Ok(Some(dur))
 }
 
 impl Settings {

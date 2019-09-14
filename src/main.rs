@@ -1,5 +1,5 @@
 use chrono::offset::TimeZone;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Duration, Local};
 use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
 };
@@ -59,6 +59,7 @@ struct Rog {
     header_replace: bool,
     header_add: bool,
     parse: Vec<String>,
+    add_time: Option<Duration>,
     lines: Vec<Line>,
 }
 
@@ -418,6 +419,7 @@ impl Rog {
         header_replace: bool,
         header_add: bool,
         parse: Vec<String>,
+        add_time: Option<Duration>,
     ) -> Rog {
         Rog {
             name,
@@ -426,6 +428,7 @@ impl Rog {
             header_replace,
             header_add,
             parse,
+            add_time,
             lines: vec![],
         }
     }
@@ -495,9 +498,12 @@ impl Rog {
                     r.insert("path".to_string(), self.path.to_str().unwrap().to_string());
                     if let Some(time) = r.get("time") {
                         self.parse.iter().find_map(|p| {
-                            if let Ok(time) = Local.datetime_from_str(time, p) {
+                            if let Ok(mut time) = Local.datetime_from_str(time, p) {
+                                if let Some(dur) = self.add_time {
+                                    time = time + dur;
+                                }
                                 Some(Line {
-                                    time: time,
+                                    time,
                                     msg: r.clone(),
                                 })
                             } else {
@@ -538,10 +544,6 @@ impl Rog {
             let re = Regex::new(cap)?;
             rdr.enumerate().for_each(|(idx, r)| match r {
                 Ok(r) => {
-                    let mut line = Line {
-                        time: Local::now(),
-                        msg: HashMap::new(),
-                    };
                     if let Some(caps) = re.captures(&r) {
                         let time = self.parse.iter().find_map(|p| {
                             if let Ok(time) = Local.datetime_from_str(
@@ -555,8 +557,14 @@ impl Rog {
                             }
                         });
 
-                        if let Some(time) = time {
-                            line.time = time;
+                        if let Some(mut time) = time {
+                            if let Some(dur) = self.add_time {
+                                time = time + dur;
+                            }
+                            let mut line = Line {
+                                time,
+                                msg: HashMap::new(),
+                            };
 
                             line.msg = re
                                 .capture_names()
@@ -613,6 +621,7 @@ fn get_rog<P: AsRef<Path>>(path: P, cfg: &Settings) -> Option<Rog> {
                 rog.header_replace,
                 rog.header_add,
                 rog.parse.clone(),
+                rog.add_time,
             )),
             false => None,
         }
