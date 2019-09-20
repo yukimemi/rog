@@ -49,6 +49,7 @@ struct Lines(Vec<Line>);
 #[derive(Debug, Clone)]
 struct Line {
     time: DateTime<Local>,
+    time_fix: DateTime<Local>,
     msg: Msg,
 }
 #[derive(Debug, Clone)]
@@ -149,7 +150,7 @@ fn main() -> Result<()> {
 
     // Sort rogs.
     let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
-    lines.sort_by_key(|l| l.time);
+    lines.sort_by_key(|l| l.time_fix);
 
     // Filter lines by time.
     if let Some(start) = matches.value_of("start") {
@@ -341,11 +342,15 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
     let len = lines.len();
     lines.iter().for_each(|line| {
         // Make output records.
-        let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S.%3f").to_string()];
+        let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S%.9f").to_string()];
         &out.fields.iter().for_each(|field| {
             let def = "".to_string();
             let f = line.msg.get(field).unwrap_or(&def);
-            v.push(f.to_string());
+            if field == "time_fix" {
+                v.push(line.time_fix.format("%Y/%m/%d %H:%M:%S%.9f").to_string());
+            } else {
+                v.push(f.to_string());
+            }
         });
         if let Err(e) = wtr.write_record(&v) {
             eprintln!("write_record error: {:#?}", e);
@@ -381,11 +386,15 @@ fn output_csv(lines: Vec<&Line>, cfg: &Settings) -> Result<()> {
         let len = grep_data.len();
         grep_data.into_iter().for_each(|line| {
             // Make output records.
-            let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S.%3f").to_string()];
+            let mut v = vec![line.time.format("%Y/%m/%d %H:%M:%S%.9f").to_string()];
             &out.fields.iter().for_each(|field| {
                 let def = "".to_string();
                 let f = line.msg.get(field).unwrap_or(&def);
-                v.push(f.to_string());
+                if field == "time_fix" {
+                    v.push(line.time_fix.format("%Y/%m/%d %H:%M:%S%.9f").to_string());
+                } else {
+                    v.push(f.to_string());
+                }
             });
             if let Err(e) = wtr.write_record(&v) {
                 eprintln!("write_record error: {:#?}", e);
@@ -498,12 +507,14 @@ impl Rog {
                     r.insert("path".to_string(), self.path.to_str().unwrap().to_string());
                     if let Some(time) = r.get("time") {
                         self.parse.iter().find_map(|p| {
-                            if let Ok(mut time) = Local.datetime_from_str(time, p) {
+                            if let Ok(time) = Local.datetime_from_str(time, p) {
+                                let mut time_fix = time;
                                 if let Some(dur) = self.add_time {
-                                    time = time + dur;
+                                    time_fix = time_fix + dur;
                                 }
                                 Some(Line {
                                     time,
+                                    time_fix,
                                     msg: r.clone(),
                                 })
                             } else {
@@ -557,12 +568,14 @@ impl Rog {
                             }
                         });
 
-                        if let Some(mut time) = time {
+                        if let Some(time) = time {
+                            let mut time_fix = time;
                             if let Some(dur) = self.add_time {
-                                time = time + dur;
+                                time_fix = time_fix + dur;
                             }
                             let mut line = Line {
                                 time,
+                                time_fix,
                                 msg: HashMap::new(),
                             };
 
@@ -606,7 +619,7 @@ impl Rog {
     }
 
     fn sort(&mut self) {
-        self.lines.sort_by_key(|line| line.time);
+        self.lines.sort_by_key(|line| line.time_fix);
     }
 }
 
@@ -745,7 +758,7 @@ mod tests {
 
         // Sort rogs.
         let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
-        lines.sort_by_key(|l| l.time);
+        lines.sort_by_key(|l| l.time_fix);
         // dbg!(&lines);
 
         assert_eq!(lines.len(), 26);
@@ -765,7 +778,7 @@ mod tests {
 
         // Sort rogs.
         let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
-        lines.sort_by_key(|l| l.time);
+        lines.sort_by_key(|l| l.time_fix);
 
         // grep
         if let Some(greps) = &settings.out.unwrap().grep {
@@ -788,7 +801,7 @@ mod tests {
 
         // Sort rogs.
         let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
-        lines.sort_by_key(|l| l.time);
+        lines.sort_by_key(|l| l.time_fix);
 
         output_csv(lines, &settings).unwrap();
         let content = fs::read_to_string(&settings.out.unwrap().grep_path.unwrap()).unwrap();
