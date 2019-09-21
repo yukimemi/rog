@@ -499,46 +499,61 @@ impl Rog {
             .flexible(true)
             .from_reader(f);
 
-        let lines: Vec<Line> = rdr
-            .deserialize()
-            .filter_map(|r: std::result::Result<Msg, csv::Error>| match r {
-                Ok(mut r) => {
-                    r.insert("name".to_string(), self.name.to_string());
-                    r.insert("path".to_string(), self.path.to_str().unwrap().to_string());
-                    if let Some(time) = r.get("time") {
-                        self.parse.iter().find_map(|p| {
-                            if let Ok(time) = Local.datetime_from_str(time, p) {
-                                let mut time_fix = time;
-                                if let Some(dur) = self.add_time {
-                                    time_fix = time_fix + dur;
-                                }
-                                if (self.start.unwrap_or(time_fix) <= time_fix)
-                                    && (time_fix <= self.end.unwrap_or(time_fix))
-                                {
-                                    Some(Line {
-                                        time,
-                                        time_fix,
-                                        msg: r.clone(),
-                                    })
-                                } else {
-                                    None
-                                }
-                            } else {
-                                eprintln!("time parse error {:#?} {:#?}", time, &p);
-                                None
-                            }
-                        })
-                    } else {
-                        eprintln!("time column not found ! {:#?}", r);
-                        None
-                    }
-                }
+        let mut lines: Vec<Line> = Vec::new();
+
+        for result in rdr.deserialize() {
+            let mut msg: Msg = match result {
+                Ok(x) => x,
                 Err(e) => {
                     debug!("Deserialize error {:#?}", e);
-                    None
+                    continue;
                 }
-            })
-            .collect();
+            };
+            // Get time column.
+            let time = match msg.get("time") {
+                Some(x) => x,
+                None => {
+                    eprintln!("time column not found ! {:#?}", msg);
+                    continue;
+                }
+            };
+            // Parse time.
+            let time =
+                match self
+                    .parse
+                    .iter()
+                    .find_map(|p| match Local.datetime_from_str(time, p) {
+                        Ok(x) => Some(x),
+                        Err(e) => {
+                            eprintln!("time parse error {:#?} {:#?} {:#?}", time, &p, e);
+                            None
+                        }
+                    }) {
+                    Some(x) => x,
+                    None => {
+                        eprintln!("time parse error {:#?}", time);
+                        continue;
+                    }
+                };
+
+            let mut time_fix = time;
+            if let Some(x) = self.add_time {
+                time_fix = time_fix + x;
+            }
+
+            // Add if tiem_fix is in time.
+            if (self.start.unwrap_or(time_fix) <= time_fix)
+                && (time_fix <= self.end.unwrap_or(time_fix))
+            {
+                msg.insert("name".to_string(), self.name.to_string());
+                msg.insert("path".to_string(), self.path.to_str().unwrap().to_string());
+                lines.push(Line {
+                    time,
+                    time_fix,
+                    msg,
+                });
+            }
+        }
 
         // debug!("{:#?}", lines);
 
