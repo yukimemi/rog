@@ -547,11 +547,20 @@ impl Rog {
             {
                 msg.insert("name".to_string(), self.name.to_string());
                 msg.insert("path".to_string(), self.path.to_str().unwrap().to_string());
+                debug!(
+                    "Insert time: {:#?}, time_fix: {:#?}, msg: {:#?}",
+                    &time, &time_fix, &msg
+                );
                 lines.push(Line {
                     time,
                     time_fix,
                     msg,
                 });
+            } else {
+                debug!(
+                    "Skip time: {:#?}, time_fix: {:#?}, msg: {:#?}",
+                    time, time_fix, msg
+                );
             }
         }
 
