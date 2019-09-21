@@ -61,6 +61,8 @@ struct Rog {
     header_add: bool,
     parse: Vec<String>,
     add_time: Option<Duration>,
+    start: Option<DateTime<Local>>,
+    end: Option<DateTime<Local>>,
     lines: Vec<Line>,
 }
 
@@ -123,35 +125,6 @@ fn main() -> Result<()> {
             });
         }
     }
-
-    // Get logs.
-    let input = matches.value_of("PATH").unwrap();
-    let recv = get_entries(input);
-
-    // Filter logs.
-    let rogs: Vec<Rog> = recv
-        .iter()
-        .filter_map(|de| get_rog(de.path(), &settings))
-        .collect();
-
-    // Parse lines of rogs.
-    let rogs: Vec<Rog> = rogs
-        .iter()
-        .map(|rog| rog.parse_lines())
-        .map(|rog| match rog {
-            Ok(rog) => Some(rog),
-            Err(e) => {
-                eprintln!("Error: {:#?}", e);
-                None
-            }
-        })
-        .flatten()
-        .collect();
-
-    // Sort rogs.
-    let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
-    lines.sort_by_key(|l| l.time_fix);
-
     // Filter lines by time.
     if let Some(start) = matches.value_of("start") {
         if let Some(out) = settings.out {
@@ -186,17 +159,45 @@ fn main() -> Result<()> {
         }
     }
 
+    // Get logs.
+    let input = matches.value_of("PATH").unwrap();
+    let recv = get_entries(input);
+
+    // Filter logs.
+    let rogs: Vec<Rog> = recv
+        .iter()
+        .filter_map(|de| get_rog(de.path(), &settings))
+        .collect();
+
+    // Parse lines of rogs.
+    let rogs: Vec<Rog> = rogs
+        .iter()
+        .map(|rog| rog.parse_lines())
+        .map(|rog| match rog {
+            Ok(rog) => Some(rog),
+            Err(e) => {
+                eprintln!("Error: {:#?}", e);
+                None
+            }
+        })
+        .flatten()
+        .collect();
+
+    // Sort rogs.
+    let mut lines: Vec<&Line> = rogs.iter().map(|rog| &rog.lines).flatten().collect();
+    lines.sort_by_key(|l| l.time_fix);
+
     // Filter lines for time.
-    let out = settings.out.as_ref().expect("out setting is needed now !");
-    if let Some(start) = out.start {
-        lines = lines
-            .into_iter()
-            .filter(|line| line.time >= start)
-            .collect();
-    }
-    if let Some(end) = out.end {
-        lines = lines.into_iter().filter(|line| line.time <= end).collect();
-    }
+    // let out = settings.out.as_ref().expect("out setting is needed now !");
+    // if let Some(start) = out.start {
+    //     lines = lines
+    //         .into_iter()
+    //         .filter(|line| line.time >= start)
+    //         .collect();
+    // }
+    // if let Some(end) = out.end {
+    //     lines = lines.into_iter().filter(|line| line.time <= end).collect();
+    // }
 
     // Output rogs.
     // settings.out.
@@ -429,6 +430,8 @@ impl Rog {
         header_add: bool,
         parse: Vec<String>,
         add_time: Option<Duration>,
+        start: Option<DateTime<Local>>,
+        end: Option<DateTime<Local>>,
     ) -> Rog {
         Rog {
             name,
@@ -438,6 +441,8 @@ impl Rog {
             header_add,
             parse,
             add_time,
+            start,
+            end,
             lines: vec![],
         }
     }
@@ -494,11 +499,6 @@ impl Rog {
             .flexible(true)
             .from_reader(f);
 
-        // rdr.records().next();
-        // let pos = rdr.position().clone();
-        // rdr.records().for_each(|r| debug!("{:#?}", r));
-        // rdr.seek(pos)?;
-
         let lines: Vec<Line> = rdr
             .deserialize()
             .filter_map(|r: std::result::Result<Msg, csv::Error>| match r {
@@ -512,11 +512,17 @@ impl Rog {
                                 if let Some(dur) = self.add_time {
                                     time_fix = time_fix + dur;
                                 }
-                                Some(Line {
-                                    time,
-                                    time_fix,
-                                    msg: r.clone(),
-                                })
+                                if (self.start.unwrap_or(time_fix) <= time_fix)
+                                    && (time_fix <= self.end.unwrap_or(time_fix))
+                                {
+                                    Some(Line {
+                                        time,
+                                        time_fix,
+                                        msg: r.clone(),
+                                    })
+                                } else {
+                                    None
+                                }
                             } else {
                                 eprintln!("time parse error {:#?} {:#?}", time, &p);
                                 None
@@ -573,27 +579,31 @@ impl Rog {
                             if let Some(dur) = self.add_time {
                                 time_fix = time_fix + dur;
                             }
-                            let mut line = Line {
-                                time,
-                                time_fix,
-                                msg: HashMap::new(),
-                            };
+                            if (self.start.unwrap_or(time_fix) <= time_fix)
+                                && (time_fix <= self.end.unwrap_or(time_fix))
+                            {
+                                let mut line = Line {
+                                    time,
+                                    time_fix,
+                                    msg: HashMap::new(),
+                                };
 
-                            line.msg = re
-                                .capture_names()
-                                .flatten()
-                                .filter_map(|n| {
-                                    Some((n.to_string(), caps.name(n)?.as_str().to_string()))
-                                })
-                                .collect();
-                            line.msg.insert("name".to_string(), self.name.to_string());
-                            line.msg.insert(
-                                "path".to_string(),
-                                self.path.to_str().unwrap().to_string(),
-                            );
+                                line.msg = re
+                                    .capture_names()
+                                    .flatten()
+                                    .filter_map(|n| {
+                                        Some((n.to_string(), caps.name(n)?.as_str().to_string()))
+                                    })
+                                    .collect();
+                                line.msg.insert("name".to_string(), self.name.to_string());
+                                line.msg.insert(
+                                    "path".to_string(),
+                                    self.path.to_str().unwrap().to_string(),
+                                );
 
-                            // debug!("{:#?}", line);
-                            lines.push(line);
+                                // debug!("{:#?}", line);
+                                lines.push(line);
+                            }
                         } else {
                             eprintln!("no time parse error {:#?} {:#?}", &r, &self.parse);
                         }
@@ -635,6 +645,8 @@ fn get_rog<P: AsRef<Path>>(path: P, cfg: &Settings) -> Option<Rog> {
                 rog.header_add,
                 rog.parse.clone(),
                 rog.add_time,
+                cfg.clone().out?.start,
+                cfg.clone().out?.end,
             )),
             false => None,
         }
