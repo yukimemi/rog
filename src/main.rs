@@ -12,7 +12,7 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use tempfile::NamedTempFile;
@@ -257,11 +257,14 @@ fn to_utf8<P: AsRef<Path>>(input: P, output: P) -> Result<()> {
 
     #[cfg(target_os = "windows")]
     {
+        let output = fs::File::create(output)?;
         let out = Command::new(&gonkf_path)
             .arg("-w")
             .arg(input.as_ref().to_path_buf())
-            .output()?;
-        fs::write(&output, &out.stdout)?;
+            .stdout(Stdio::from(output))
+            .spawn()?
+            .wait_with_output()?;
+        // fs::write(&output, &out.stdout)?;
     }
 
     Ok(())
@@ -490,18 +493,26 @@ impl Rog {
         // Before open, translate to utf8.
         let tmp_file = NamedTempFile::new()?.into_temp_path();
         to_utf8(&self.path, &tmp_file.to_path_buf())?;
-        self.fix_header(&tmp_file)?;
+        // self.fix_header(&tmp_file)?;
         // Open rog.
-        // debug!("Open rog [{:#?}]", &tmp_file);
+        // debug!("Open rog (csv) [{:#?}]", &tmp_file);
         let f = fs::File::open(tmp_file)?;
         let mut rdr = csv::ReaderBuilder::new()
-            .has_headers(true)
             .flexible(true)
+            .has_headers(true)
             .from_reader(f);
+        if let Capture::Csv(header) = self.capture.clone() {
+            rdr.set_headers(csv::StringRecord::from(header));
+        }
 
         let mut lines: Vec<Line> = Vec::new();
 
-        for result in rdr.deserialize() {
+        let mut rdr = rdr.deserialize();
+        if self.header_replace {
+            rdr.next();
+        }
+
+        for result in rdr {
             let mut msg: Msg = match result {
                 Ok(x) => x,
                 Err(e) => {
@@ -547,20 +558,14 @@ impl Rog {
             {
                 msg.insert("name".to_string(), self.name.to_string());
                 msg.insert("path".to_string(), self.path.to_str().unwrap().to_string());
-                debug!(
-                    "Insert time: {:#?}, time_fix: {:#?}, msg: {:#?}",
-                    &time, &time_fix, &msg
-                );
+                // debug!("Insert time: {:#?}, time_fix: {:#?}, msg: {:#?}", &time, &time_fix, &msg);
                 lines.push(Line {
                     time,
                     time_fix,
                     msg,
                 });
             } else {
-                debug!(
-                    "Skip time: {:#?}, time_fix: {:#?}, msg: {:#?}",
-                    time, time_fix, msg
-                );
+                // debug!("Skip time: {:#?}, time_fix: {:#?}, msg: {:#?}", time, time_fix, msg);
             }
         }
 
