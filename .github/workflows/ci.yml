@@ -36,4 +36,10 @@ jobs:
       with:
         command: make
         args: ci-flow
-
+    - name: Publish to github
+      uses: actions-rs/cargo@master
+      with:
+        command: make
+        args: github-publish-custom-name
+      env:
+        GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
