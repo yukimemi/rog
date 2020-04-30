@@ -1,5 +1,15 @@
+[env]
+CARGO_MAKE_RUN_CODECOV = true
+
 [config]
-skip_core_tasks = true
+# skip_core_tasks = true
+additional_profiles = [
+    "multi-phase-tests",
+    "ci-coverage-tasks",
+    "ci-static-code-analysis-tasks",
+    "ci-all-build-tasks",
+    "publish-pre-cleanup"
+]
 
 [tasks.format]
 install_crate = "rustfmt"
